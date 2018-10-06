@@ -1,0 +1,20 @@
+project: lj_riseml
+train:
+  framework: tensorflow
+  tensorflow:
+    version: 1.9.0
+    tensorboard: true
+  image: pytorch/pytorch
+
+  install:
+    - pip install --upgrade pip
+    - pip install cython docopt librosa tqdm lws nnmnkwii torch keras tensorboardX matplotlib tensorflow
+    
+  resources:
+    gpus: 1
+    cpus: 1
+    mem: 60000
+    
+  run: 
+  - python train.py --data-root=./exp  --checkpoint-dir=/output/model  --log-event-path=/output/eventlog  --hparams="dropout={{dropout}}"
+ 

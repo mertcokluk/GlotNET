@@ -1,17 +1,26 @@
-# GlotNET vocoder
+# WaveNet vocoder
 
-An implementation GlotNET vocoder as variant of WaveNET. WaveNET is inherited from https://r9y9.github.io/wavenet_vocoder/.
+[![PyPI](https://img.shields.io/pypi/v/wavenet_vocoder.svg)](https://pypi.python.org/pypi/wavenet_vocoder)
+[![Build Status](https://travis-ci.org/r9y9/wavenet_vocoder.svg?branch=master)](https://travis-ci.org/r9y9/wavenet_vocoder)
+[![Build status](https://ci.appveyor.com/api/projects/status/lvt9jtimtg0koxwj?svg=true)](https://ci.appveyor.com/project/r9y9/wavenet-vocoder)
 
+The goal of the repository is to provide an implementation of the WaveNet vocoder, which can generate high quality raw speech samples conditioned on linguistic or acoustic features.
 
+Audio samples are available at https://r9y9.github.io/wavenet_vocoder/.
+
+## Online TTS demo
+
+A notebook supposed to be executed on https://colab.research.google.com is available:
+
+- [Tacotron2: WaveNet-based text-to-speech demo](https://colab.research.google.com/github/r9y9/Colaboratory/blob/master/Tacotron2_and_WaveNet_text_to_speech_demo.ipynb)
 
 ## Highlights
 
-- Focus on local conditioning of GlotNet, which is essential for vocoder.
+- Focus on local and global conditioning of WaveNet, which is essential for vocoder.
 - Mixture of logistic distributions loss / sampling
-- Various audio samples 
+- Various audio samples and pre-trained models
 - Fast inference by caching intermediate states in convolutions. Similar to [arXiv:1611.09482](https://arxiv.org/abs/1611.09482)
 
-<!--
 ## Pre-trained models
 
 **Note**: This is not itself a text-to-speech (TTS) model. With a pre-trained model provided here, you can synthesize waveform given a *mel spectrogram*, not raw text. You will need mel-spectrogram prediction model (such as Tacotron2) to use the pre-trained models for TTS.
@@ -45,7 +54,6 @@ python synthesis.py --preset=20180510_mixture_lj_checkpoint_step000320000_ema.js
 ```
 
 You can find a generated wav file in `generated` directory. Wonder how it works? then take a look at code:)
--->
 
 ## Requirements
 
@@ -54,7 +62,6 @@ You can find a generated wav file in `generated` directory. Wonder how it works?
 - PyTorch >= v0.4.0
 - TensorFlow >= v1.3
 
-<!--
 ## Installation
 
 The repository contains a core library (PyTorch implementation of the WaveNet) and utility scripts. All the library and its dependencies can be installed by:
@@ -69,7 +76,6 @@ If you only need the library part, then you can install it by the following comm
 ```
 pip install wavenet_vocoder
 ```
--->
 
 ## Getting started
 
@@ -111,6 +117,7 @@ python preprocess.py ${dataset_name} ${dataset_path} ${out_dir} --preset=<json>
 
 Supported `${dataset_name}`s for now are
 
+- `cmu_arctic` (multi-speaker)
 - `ljspeech` (single speaker)
 
 Assuming you use preset parameters known to work good for CMU ARCTIC dataset and have data in `~/data/cmu_arctic`, then you can preprocess data by:
@@ -119,9 +126,9 @@ Assuming you use preset parameters known to work good for CMU ARCTIC dataset and
 python preprocess.py cmu_arctic ~/data/cmu_arctic ./data/cmu_arctic --preset=presets/cmu_arctic_8bit.json
 ```
 
-When this is done, you will see time-aligned extracted features (audio, glottal exciation, vocal tract filter and mel-spectrogram) in `./data/cmu_arctic`.
+When this is done, you will see time-aligned extracted features (pairs of audio and mel-spectrogram) in `./data/cmu_arctic`.
 
-### 2. Training(The rest is under construction, it may take a while)
+### 2. Training
 
 >Note: for multi gpu training, you have better ensure that batch_size % num_gpu == 0
 
@@ -150,15 +157,27 @@ Out[2]:
  (6, 'slt')]
 ```
 
+#### Training un-conditional WaveNet
 
-#### 2. Training WaveNet conditioned on mel-spectrogram
+```
+python train.py --data-root=./data/cmu_arctic/
+    --hparams="cin_channels=-1,gin_channels=-1"
+```
+
+You have to disable global and local conditioning by setting `gin_channels` and `cin_channels` to negative values.
+
+#### Training WaveNet conditioned on mel-spectrogram
 
 ```
 python train.py --data-root=./data/cmu_arctic/ --speaker-id=0 \
     --hparams="cin_channels=80,gin_channels=-1"
 ```
 
+#### Training WaveNet conditioned on mel-spectrogram and speaker embedding
 
+```
+python train.py --data-root=./data/cmu_arctic/ \
+    --hparams="cin_channels=80,gin_channels=16,n_speakers=7"
 ```
 
 ### 3. Monitor with Tensorboard
@@ -169,7 +188,7 @@ Logs are dumped in `./log` directory by default. You can monitor logs by tensorb
 tensorboard --logdir=log
 ```
 
-### 4. Synthesize glottal excitation from a checkpoint
+### 4. Synthesize from a checkpoint
 
 Usage:
 
@@ -190,9 +209,7 @@ python synthesis.py --hparams="parameters you want to override" \
     generated/test_awb \
     --conditional=./data/cmu_arctic/cmu_arctic-mel-00001.npy
 ```
-### 5. Post Process
 
-<!--
 ## Misc
 
 ### Synthesize audio samples for testset
@@ -219,16 +236,12 @@ python evaluate.py --data-root=./data/cmu_arctic/ \
     ./checkpoints_awb/checkpoint_step000100000.pth \
     ./generated/cmu_arctic_awb
 ```
--->
 
 ## References
 
-- [Lauri Juvela, Vassilis Tsiaras, Bajibabu Bollepalli, et al, "Speaker-independent raw waveform model for glottal excitation", arXiv:1804.09593, Apr. 2018](https://arxiv.org/pdf/1804.09593.pdf)
 - [Aaron van den Oord, Sander Dieleman, Heiga Zen, et al, "WaveNet: A Generative Model for Raw Audio", 	arXiv:1609.03499, Sep 2016.](https://arxiv.org/abs/1609.03499)
 - [Aaron van den Oord, Yazhe Li, Igor Babuschkin, et al, "Parallel WaveNet: Fast High-Fidelity Speech Synthesis", 	arXiv:1711.10433, Nov 2017.](https://arxiv.org/abs/1711.10433)
 - [Tamamori, Akira, et al. "Speaker-dependent WaveNet vocoder." Proceedings of Interspeech. 2017.](http://www.isca-speech.org/archive/Interspeech_2017/pdfs/0314.PDF)
 - [Jonathan Shen, Ruoming Pang, Ron J. Weiss, et al, "Natural TTS Synthesis by Conditioning WaveNet on Mel Spectrogram Predictions", arXiv:1712.05884, Dec 2017.](https://arxiv.org/abs/1712.05884)
 - [Wei Ping, Kainan Peng, Andrew Gibiansky, et al, "Deep Voice 3: 2000-Speaker Neural Text-to-Speech", arXiv:1710.07654, Oct. 2017.](https://arxiv.org/abs/1710.07654)
 - [Tom Le Paine, Pooya Khorrami, Shiyu Chang, et al, "Fast Wavenet Generation Algorithm", arXiv:1611.09482, Nov. 2016](https://arxiv.org/abs/1611.09482)
-
-
