@@ -343,9 +343,10 @@ def ensure_divisible(length, divisible_by=256, lower=True):
     else:
         return length + (divisible_by - length % divisible_by)
 
-
+'''
 def assert_ready_for_upsampling(x, c):
     assert len(x) % len(c) == 0 and len(x) // len(c) == audio.get_hop_size()
+'''
 
 
 def collate_fn(batch):
@@ -366,49 +367,43 @@ def collate_fn(batch):
     global_conditioning = len(batch[0]) >= 3 and hparams.gin_channels > 0
 
     if hparams.max_time_sec is not None:
-        max_time_steps = int(hparams.max_time_sec * hparams.sample_rate)
-    elif hparams.max_time_steps is not None:
-        max_time_steps = hparams.max_time_steps
+        max_time_frames = int((hparams.max_time_sec * hparams.sample_rate)/hparams.hop_size)
+    elif hparams.max_time_frames is not None:
+        max_time_frames = hparams.max_time_frames
     else:
-        max_time_steps = None
+        max_time_frames = None
 
     # Time resolution adjustment
     if local_conditioning:
         new_batch = []
         for idx in range(len(batch)):
             x, c, g = batch[idx]
-            '''
+            c = c[2:-2]
             if hparams.upsample_conditional_features:
-                assert_ready_for_upsampling(x, c)
-                if max_time_steps is not None:
-                    max_steps = ensure_divisible(max_time_steps, audio.get_hop_size(), True)
-                    if len(x) > max_steps:
-                        max_time_frames = max_steps // audio.get_hop_size()
-                        s = np.random.randint(0, len(c) - max_time_frames)
-                        ts = s * audio.get_hop_size()
-                        x = x[ts:ts + audio.get_hop_size() * max_time_frames]
-                        c = c[s:s + max_time_frames, :]
-                        assert_ready_for_upsampling(x, c)
+                
+                if len(x) > max_time_frames:
+                    s = np.random.randint(0, len(c) - max_time_frames)
+                    x = x[s:s + max_time_frames, :]
+                    c = c[s:s + max_time_frames, :]
+                    
             else:
-                x, c = audio.adjust_time_resolution(x, c)
-                if max_time_steps is not None and len(x) > max_time_steps:
-                    s = np.random.randint(0, len(x) - max_time_steps)
-                    x, c = x[s:s + max_time_steps], c[s:s + max_time_steps, :]
-                assert len(x) == len(c)
-            '''    
+                if max_time_frames is not None and len(x) > max_time_frames:
+                    s = np.random.randint(0, len(c) - max_time_frames)
+                    x, c = x[s:s + max_time_frames], c[s:s + max_time_frames, :]
+                
+   
             new_batch.append((x, c, g))
         batch = new_batch
     else:
         new_batch = []
         for idx in range(len(batch)):
             x, c, g = batch[idx]
-            x = audio.trim(x)
-            if max_time_steps is not None and len(x) > max_time_steps:
-                s = np.random.randint(0, len(x) - max_time_steps)
+            if max_time_frames is not None and len(x) > max_time_frames:
+                s = np.random.randint(0, len(x) - max_time_frames)
                 if local_conditioning:
-                    x, c = x[s:s + max_time_steps], c[s:s + max_time_steps, :]
+                    x, c = x[s:s + max_time_frames], c[s:s + max_time_frames, :]
                 else:
-                    x = x[s:s + max_time_steps]
+                    x = x[s:s + max_time_frames]
             new_batch.append((x, c, g))
         batch = new_batch
 
@@ -427,12 +422,6 @@ def collate_fn(batch):
                             for x in batch], dtype=np.float32) 
     assert len(x_batch.shape) == 3
 
-    # (B, T)
-    if is_mulaw_quantize(hparams.input_type):
-        y_batch = np.array([_pad(x[0], max_input_len) for x in batch], dtype=np.int)
-    else:
-        y_batch = np.array([_pad(x[0], max_input_len) for x in batch], dtype=np.float32)
-    assert len(y_batch.shape) == 3
 
     # (B, T, D)
     if local_conditioning:
@@ -451,6 +440,8 @@ def collate_fn(batch):
 
     # Covnert to channel first i.e., (B, C, T)
     x_batch = torch.FloatTensor(x_batch).transpose(1, 2).contiguous()
+    
+    y_batch = x_batch
     # Add extra axis
     if is_mulaw_quantize(hparams.input_type):
         y_batch = torch.LongTensor(y_batch).unsqueeze(-1).contiguous()
@@ -637,6 +628,8 @@ def __train_step(device, phase, epoch, global_step, global_test_step,
         y_hat = y_hat.unsqueeze(-1)
         loss = criterion(y_hat[:, :, :-1, :], y[:, 1:, :], mask=mask)
     else:
+        print('yhat:',y_hat[:, :, :-1].shape)
+        print('y:',y[:,1:, :].shape)
         loss = criterion(y_hat[:, :, :-1], y[:, 1:, :], mask=mask)
 
     if train and step > 0 and step % hparams.checkpoint_interval == 0:

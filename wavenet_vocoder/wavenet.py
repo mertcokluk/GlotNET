@@ -118,10 +118,8 @@ class WaveNet(nn.Module):
         self.legacy = legacy
         assert layers % stacks == 0
         layers_per_stack = layers // stacks
-        if scalar_input:
-            self.first_conv = Conv1d1x1(1, residual_channels)
-        else:
-            self.first_conv = Conv1d1x1(out_channels, residual_channels)
+        
+        self.first_conv = Conv1d1x1(out_channels, residual_channels)
 
         self.conv_layers = nn.ModuleList()
         for layer in range(layers):
