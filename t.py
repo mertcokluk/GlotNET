@@ -390,6 +390,7 @@ def collate_fn(batch):
         batch = new_batch
 
     # Lengths
+    print('x0:',len(x[0]))
     input_lengths = [len(x[0]) for x in batch]
     max_input_len = max(input_lengths)
 
