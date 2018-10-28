@@ -52,7 +52,6 @@ from tensorboardX import SummaryWriter
 from matplotlib import cm
 from warnings import warn
 
-from wavenet_vocoder.util import is_mulaw_quantize, is_mulaw, is_raw, is_scalar_input
 from wavenet_vocoder.mixture import discretized_mix_logistic_loss
 from wavenet_vocoder.mixture import sample_from_discretized_mix_logistic
 
@@ -343,10 +342,6 @@ def ensure_divisible(length, divisible_by=256, lower=True):
     else:
         return length + (divisible_by - length % divisible_by)
 
-'''
-def assert_ready_for_upsampling(x, c):
-    assert len(x) % len(c) == 0 and len(x) // len(c) == audio.get_hop_size()
-'''
 
 
 def collate_fn(batch):
@@ -379,17 +374,10 @@ def collate_fn(batch):
         for idx in range(len(batch)):
             x, c, g = batch[idx]
             c = c[2:-2]
-            if hparams.upsample_conditional_features:
-                
-                if len(x) > max_time_frames:
-                    s = np.random.randint(0, len(c) - max_time_frames)
-                    x = x[s:s + max_time_frames, :]
-                    c = c[s:s + max_time_frames, :]
-                    
-            else:
-                if max_time_frames is not None and len(x) > max_time_frames:
-                    s = np.random.randint(0, len(c) - max_time_frames)
-                    x, c = x[s:s + max_time_frames], c[s:s + max_time_frames, :]
+
+        if max_time_frames is not None and len(x) > max_time_frames:
+            s = np.random.randint(0, len(c) - max_time_frames)
+            x, c = x[s:s + max_time_frames], c[s:s + max_time_frames, :]
                 
    
             new_batch.append((x, c, g))
@@ -413,12 +401,7 @@ def collate_fn(batch):
 
     # (B, T, C)
     # pad for time-axis
-    if is_mulaw_quantize(hparams.input_type):
-        x_batch = np.array([_pad_2d(np_utils.to_categorical(
-            x[0], num_classes=hparams.quantize_channels),
-            max_input_len) for x in batch], dtype=np.float32)
-    else:
-        x_batch = np.array([_pad_2d(x[0], max_input_len)
+    x_batch = np.array([_pad_2d(x[0], max_input_len)
                             for x in batch], dtype=np.float32) 
     assert len(x_batch.shape) == 3
 
@@ -443,10 +426,7 @@ def collate_fn(batch):
     
     y_batch = x_batch
     # Add extra axis
-    if is_mulaw_quantize(hparams.input_type):
-        y_batch = torch.LongTensor(y_batch).unsqueeze(-1).contiguous()
-    else:
-        y_batch = torch.FloatTensor(y_batch).unsqueeze(-1).contiguous()
+    y_batch = torch.FloatTensor(y_batch).unsqueeze(-1).contiguous()
 
     input_lengths = torch.LongTensor(input_lengths)
 
@@ -484,10 +464,8 @@ def eval_model(global_step, writer, device, model, y, c, g, input_lengths, eval_
     y_target = y[idx].view(-1).data.cpu().numpy()[:length]
 
     if c is not None:
-        if hparams.upsample_conditional_features:
-            c = c[idx, :, :length // audio.get_hop_size()].unsqueeze(0)
-        else:
-            c = c[idx, :, :length].unsqueeze(0)
+    	c = c[idx, :, :length].unsqueeze(0)
+
         assert c.dim() == 3
         print("Shape of local conditioning features: {}".format(c.size()))
     if g is not None:
@@ -496,22 +474,11 @@ def eval_model(global_step, writer, device, model, y, c, g, input_lengths, eval_
         print("Shape of global conditioning features: {}".format(g.size()))
 
     # Dummy silence
-    if is_mulaw_quantize(hparams.input_type):
-        initial_value = P.mulaw_quantize(0, hparams.quantize_channels)
-    elif is_mulaw(hparams.input_type):
-        initial_value = P.mulaw(0.0, hparams.quantize_channels)
-    else:
-        initial_value = 0.0
+    initial_value = 0.0
     print("Intial value:", initial_value)
 
     # (C,)
-    if is_mulaw_quantize(hparams.input_type):
-        initial_input = np_utils.to_categorical(
-            initial_value, num_classes=hparams.quantize_channels).astype(np.float32)
-        initial_input = torch.from_numpy(initial_input).view(
-            1, 1, hparams.quantize_channels)
-    else:
-        initial_input = torch.zeros(1, 1, 1).fill_(initial_value)
+    initial_input = torch.zeros(1, 1, 1).fill_(initial_value)
     initial_input = initial_input.to(device)
 
     # Run the model in fast eval mode
@@ -520,15 +487,7 @@ def eval_model(global_step, writer, device, model, y, c, g, input_lengths, eval_
             initial_input, c=c, g=g, T=length, softmax=True, quantize=True, tqdm=tqdm,
             log_scale_min=hparams.log_scale_min)
 
-    if is_mulaw_quantize(hparams.input_type):
-        y_hat = y_hat.max(1)[1].view(-1).long().cpu().data.numpy()
-        y_hat = P.inv_mulaw_quantize(y_hat, hparams.quantize_channels)
-        y_target = P.inv_mulaw_quantize(y_target, hparams.quantize_channels)
-    elif is_mulaw(hparams.input_type):
-        y_hat = P.inv_mulaw(y_hat.view(-1).cpu().data.numpy(), hparams.quantize_channels)
-        y_target = P.inv_mulaw(y_target, hparams.quantize_channels)
-    else:
-        y_hat = y_hat.view(-1).cpu().data.numpy()
+    y_hat = y_hat.view(-1).cpu().data.numpy()
 
 
 
@@ -541,28 +500,13 @@ def save_states(global_step, writer, y_hat, y, input_lengths, checkpoint_dir=Non
     if y_hat.dim() == 4:
         y_hat = y_hat.squeeze(-1)
 
-    if is_mulaw_quantize(hparams.input_type):
-        # (B, T)
-        y_hat = F.softmax(y_hat, dim=1).max(1)[1]
-
-        # (T,)
-        y_hat = y_hat[idx].data.cpu().long().numpy()
-        y = y[idx].view(-1).data.cpu().long().numpy()
-
-        y_hat = P.inv_mulaw_quantize(y_hat, hparams.quantize_channels)
-        y = P.inv_mulaw_quantize(y, hparams.quantize_channels)
-    else:
-        # (B, T)
-        y_hat = sample_from_discretized_mix_logistic(
-            y_hat, log_scale_min=hparams.log_scale_min)
-        # (T,)
-        y_hat = y_hat[idx].view(-1).data.cpu().numpy()
-        y = y[idx].view(-1).data.cpu().numpy()
-
-        if is_mulaw(hparams.input_type):
-            y_hat = P.inv_mulaw(y_hat, hparams.quantize_channels)
-            y = P.inv_mulaw(y, hparams.quantize_channels)
-
+    # (B, T)
+    y_hat = sample_from_discretized_mix_logistic(
+    y_hat, log_scale_min=hparams.log_scale_min)
+    # (T,)
+    y_hat = y_hat[idx].view(-1).data.cpu().numpy()
+    y = y[idx].view(-1).data.cpu().numpy()
+  
     # Mask by length
     y_hat[length:] = 0
     y[length:] = 0
@@ -622,15 +566,9 @@ def __train_step(device, phase, epoch, global_step, global_test_step,
         print('c',c.shape)
         y_hat = model(x, c, g, False)
 
-    if is_mulaw_quantize(hparams.input_type):
-        # wee need 4d inputs for spatial cross entropy loss
-        # (B, C, T, 1)
-        y_hat = y_hat.unsqueeze(-1)
-        loss = criterion(y_hat[:, :, :-1, :], y[:, 1:, :], mask=mask)
-    else:
-        print('yhat:',y_hat[:, :, :-1].shape)
-        print('y:',y[:,1:, :].shape)
-        loss = criterion(y_hat[:, :, :-1], y[:, 1:, :], mask=mask)
+    print('yhat:',y_hat[:, :, :-1].shape)
+    print('y:',y[:,1:, :].shape)
+    loss = criterion(y_hat[:, :, :-1], y[:, 1:, :], mask=mask)
 
     if train and step > 0 and step % hparams.checkpoint_interval == 0:
         save_states(step, writer, y_hat, y, input_lengths, checkpoint_dir)
@@ -663,10 +601,7 @@ def __train_step(device, phase, epoch, global_step, global_test_step,
 
 
 def train_loop(device, model, data_loaders, optimizer, writer, checkpoint_dir=None):
-    if is_mulaw_quantize(hparams.input_type):
-        criterion = MaskedCrossEntropyLoss()
-    else:
-        criterion = DiscretizedMixturelogisticLoss()
+    criterion = DiscretizedMixturelogisticLoss()
 
     if hparams.exponential_moving_average:
         ema = ExponentialMovingAverage(hparams.ema_decay)
@@ -751,14 +686,9 @@ def save_checkpoint(device, model, optimizer, step, checkpoint_dir, epoch, ema=N
 
 
 def build_model():
-    if is_mulaw_quantize(hparams.input_type):
-        if hparams.out_channels != hparams.quantize_channels:
-            raise RuntimeError(
-                "out_channels must equal to quantize_chennels if input_type is 'mulaw-quantize'")
-    if hparams.upsample_conditional_features and hparams.cin_channels < 0:
-        s = "Upsample conv layers were specified while local conditioning disabled. "
-        s += "Notice that upsample conv layers will never be used."
-        warn(s)
+
+    if hparams.out_channels != hparams.quantize_channels:
+       raise RuntimeError("out_channels must equal to quantize_chennels if input_type is 'mulaw-quantize'")
 
     model = getattr(builder, hparams.builder)(
         out_channels=hparams.out_channels,
@@ -773,10 +703,7 @@ def build_model():
         n_speakers=hparams.n_speakers,
         dropout=hparams.dropout,
         kernel_size=hparams.kernel_size,
-        upsample_conditional_features=hparams.upsample_conditional_features,
-        upsample_scales=hparams.upsample_scales,
         freq_axis_kernel_size=hparams.freq_axis_kernel_size,
-        scalar_input=is_scalar_input(hparams.input_type),
         legacy=hparams.legacy,
     )
     return model

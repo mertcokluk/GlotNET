@@ -1,7 +1,6 @@
 {
   "name": "wavenet_vocoder",
   "builder": "wavenet",
-  "input_type": "raw",
   "quantize_channels": 1,
   "sample_rate": 22050,
   "silence_threshold": 2,
@@ -27,14 +26,6 @@
   "kernel_size": 3,
   "weight_normalization": true,
   "cin_channels": 80,
-  "upsample_conditional_features": false,
-  "upsample_scales": [
-    4,
-    4,
-    4,
-    4
-  ],
-  "freq_axis_kernel_size": 3,
   "gin_channels": -1,
   "n_speakers": 7,
   "pin_memory": true,
