@@ -47,7 +47,7 @@ from nnmnkwii.datasets import FileSourceDataset, FileDataSource
 import librosa.display
 
 from sklearn.model_selection import train_test_split
-from keras.utils import np_utils
+#from keras.utils import np_utils
 from tensorboardX import SummaryWriter
 from matplotlib import cm
 from warnings import warn
