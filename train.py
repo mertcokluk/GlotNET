@@ -465,7 +465,6 @@ def eval_model(global_step, writer, device, model, y, c, g, input_lengths, eval_
 
     if c is not None:
     	c = c[idx, :, :length].unsqueeze(0)
-
         assert c.dim() == 3
         print("Shape of local conditioning features: {}".format(c.size()))
     if g is not None:
