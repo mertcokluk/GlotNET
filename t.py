@@ -355,7 +355,7 @@ def collate_fn(batch):
             - x (FloatTensor) : Network inputs (B, C, T)
             - y (LongTensor)  : Network targets (B, T, 1)
     """
-
+    print('batch:', batch)
     local_conditioning = len(batch[0]) >= 2 
     global_conditioning = False
 
@@ -396,7 +396,7 @@ def collate_fn(batch):
 
     # (B, T, C)
     # pad for time-axis
-    print('batch:', batch)
+
     x_batch = np.array([_pad_2d(x[0], max_input_len)
                             for x in batch], dtype=np.float32) 
     print('(x_batch.shape):', x_batch.shape)	
