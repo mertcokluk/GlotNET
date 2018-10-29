@@ -367,8 +367,7 @@ def collate_fn(batch):
         new_batch = []
         for idx in range(len(batch)):
             x, c, g = batch[idx]
-            c = c[2:-2]
-                  
+            c = c[2:-2]                  
             new_batch.append((x, c, g))
         batch = new_batch
         print('batchafter:', batch[0][0].shape, batch[0][1].shape, batch[0][2])
@@ -376,12 +375,6 @@ def collate_fn(batch):
         new_batch = []
         for idx in range(len(batch)):
             x, c, g = batch[idx]
-            if max_time_frames is not None and len(x) > max_time_frames:
-                s = np.random.randint(0, len(x) - max_time_frames)
-                if local_conditioning:
-                    x, c = x[s:s + max_time_frames], c[s:s + max_time_frames, :]
-                else:
-                    x = x[s:s + max_time_frames]
             new_batch.append((x, c, g))
         batch = new_batch
 
@@ -558,8 +551,8 @@ def __train_step(device, phase, epoch, global_step, global_test_step,
         print('c',c.shape)
         y_hat = model(x, c, g, False)
 
-    print('yhat:',y_hat[:, :, :-1].shape)
-    print('y:',y[:,1:, :].shape)
+    print('yhat:',y_hat.shape)
+    print('y:',y.shape)
     loss = criterion(y_hat[:, :, :-1], y[:, 1:, :], mask=mask)
 
     if train and step > 0 and step % 1000 == 0:
