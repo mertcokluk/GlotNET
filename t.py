@@ -391,8 +391,8 @@ def collate_fn(batch):
 
     # Lengths
     print('x0:',len(x[0]))
-    input_lengths = [len(x[0]) for x in batch]
-    max_input_len = max(input_lengths)
+    input_lengths = [254]
+    max_input_len = 254
 
     # (B, T, C)
     # pad for time-axis
