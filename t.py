@@ -386,9 +386,9 @@ def collate_fn(batch):
         batch = new_batch
 
     # Lengths
-    print('x0:',len(x[0]))
-    input_lengths = [254]
-    max_input_len = 254
+    print('x0:', batch[0][0].shape[0])
+    input_lengths = batch[:][0].shape[0]
+    max_input_len = max(input_lengths)
 
     # (B, T, C)
     # pad for time-axis
