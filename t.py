@@ -355,7 +355,8 @@ def collate_fn(batch):
             - x (FloatTensor) : Network inputs (B, C, T)
             - y (LongTensor)  : Network targets (B, T, 1)
     """
-    print('batch:', batch.shape)
+    print('batch:', batch[0][0].shape)
+    print('batchlength:', len(batch[0]))
     local_conditioning = len(batch[0]) >= 2 
     global_conditioning = False
 
