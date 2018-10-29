@@ -523,7 +523,7 @@ def __train_step(device, phase, epoch, global_step, global_test_step,
     if train:
         lr_schedule_f = getattr(lrschedule, "noam_learning_rate_decay")
         current_lr = lr_schedule_f(
-            0.001, step, 0.0)
+            0.001, step, 1.0)
         for param_group in optimizer.param_groups:
             param_group['lr'] = current_lr
     optimizer.zero_grad()
