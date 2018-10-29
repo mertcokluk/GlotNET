@@ -398,6 +398,7 @@ def collate_fn(batch):
     # pad for time-axis
     x_batch = np.array([_pad_2d(x[0], max_input_len)
                             for x in batch], dtype=np.float32) 
+    print('(x_batch.shape):', x_batch.shape)	
     assert len(x_batch.shape) == 3
 
 
