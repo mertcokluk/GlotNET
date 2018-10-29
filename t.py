@@ -553,7 +553,7 @@ def __train_step(device, phase, epoch, global_step, global_test_step,
 
     print('yhat:',y_hat.shape)
     print('y:',y.shape)
-    loss = criterion(y_hat[:, :, :-1], y[:, 1:, :], mask=mask)
+    loss = criterion(y_hat[:, :, :-1], y[:, :, :], mask=mask)
 
     if train and step > 0 and step % 1000 == 0:
         save_states(step, writer, y_hat, y, input_lengths, checkpoint_dir)
