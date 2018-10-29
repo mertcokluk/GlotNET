@@ -347,7 +347,7 @@ def collate_fn(batch):
 
     Args:
         batch(tuple): List of tuples
-            - x[0] (ndarray,int) : list of (T,)
+            - x[0] (ndarray,int) : list of (T, V)
             - x[1] (ndarray,int) : list of (T, D)
             - x[2] (ndarray,int) : list of (1,), speaker id
     Returns:
@@ -357,7 +357,6 @@ def collate_fn(batch):
     """
     print('batch0:', batch[0][0].shape)
     print('batch1:', batch[0][1].shape)
-    print('batch2:', batch[0][2].shape)
     print('batchlength:', len(batch[0]))
     local_conditioning = len(batch[0]) >= 2 
     global_conditioning = False
@@ -371,12 +370,7 @@ def collate_fn(batch):
         for idx in range(len(batch)):
             x, c, g = batch[idx]
             c = c[2:-2]
-
-        if max_time_frames is not None and len(x) > max_time_frames:
-            s = np.random.randint(0, len(c) - max_time_frames)
-            x, c = x[s:s + max_time_frames], c[s:s + max_time_frames, :]
-                
-   
+                  
             new_batch.append((x, c, g))
         batch = new_batch
     else:
