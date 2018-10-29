@@ -371,7 +371,7 @@ def collate_fn(batch):
                   
             new_batch.append((x, c, g))
         batch = new_batch
-    	print('batchafter:', batch[0][0].shape, batch[0][1].shape, batch[0][2])
+        print('batchafter:', batch[0][0].shape, batch[0][1].shape, batch[0][2])
     else:
         new_batch = []
         for idx in range(len(batch)):
