@@ -553,7 +553,8 @@ def __train_step(device, phase, epoch, global_step, global_test_step,
 
     print('yhat:',y_hat.shape)
     print('y:',y.shape)
-    loss = criterion(y_hat[:, :, :-1], y[:, :, :], mask=mask)
+    print('y_hat.size(1):',y_hat.size(1))
+    loss = criterion(y_hat[0, :, :-1], y[ :, :, 1:], mask=mask)
 
     if train and step > 0 and step % 1000 == 0:
         save_states(step, writer, y_hat, y, input_lengths, checkpoint_dir)
@@ -586,7 +587,7 @@ def __train_step(device, phase, epoch, global_step, global_test_step,
 
 
 def train_loop(device, model, data_loaders, optimizer, writer, checkpoint_dir=None):
-    criterion = DiscretizedMixturelogisticLoss()
+    criterion = MaskedCrossEntropyLoss()
 
     ema = None
 
