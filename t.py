@@ -355,7 +355,7 @@ def collate_fn(batch):
             - x (FloatTensor) : Network inputs (B, C, T)
             - y (LongTensor)  : Network targets (B, T, 1)
     """
-    print('batch:', batch[0][0].shape, batch[0][1].shape, batch[0][2])
+    #print('batch:', batch[0][0].shape, batch[0][1].shape, batch[0][2])
     local_conditioning = len(batch[0]) >= 2 
     global_conditioning = False
 
@@ -370,7 +370,7 @@ def collate_fn(batch):
             c = c[2:-2]                  
             new_batch.append((x, c, g))
         batch = new_batch
-        print('batchafter:', batch[0][0].shape, batch[0][1].shape, batch[0][2])
+        #print('batchafter:', batch[0][0].shape, batch[0][1].shape, batch[0][2])
     else:
         new_batch = []
         for idx in range(len(batch)):
@@ -380,7 +380,7 @@ def collate_fn(batch):
 
     # Lengths
     input_lengths = [z[0].shape[0] for z in batch]
-    print('inputlen', input_lengths)
+    #print('inputlen', input_lengths)
     max_input_len = max(input_lengths)
 
     # (B, T, C)
@@ -388,7 +388,7 @@ def collate_fn(batch):
 
     x_batch = np.array([_pad_2d(x[0], max_input_len)
                             for x in batch], dtype=np.float32) 
-    print('(x_batch.shape):', x_batch.shape)	
+    #print('(x_batch.shape):', x_batch.shape)	
     assert len(x_batch.shape) == 3
 
 
@@ -463,7 +463,7 @@ def eval_model(global_step, writer, device, model, y, c, g, input_lengths, eval_
     print("Intial value:", initial_value)
 
     # (C,)
-    initial_input = torch.zeros(1, 1, 1).fill_(initial_value)
+    initial_input = torch.zeros(1, 254, 1).fill_(initial_value)
     initial_input = initial_input.to(device)
 
     # Run the model in fast eval mode
@@ -486,8 +486,8 @@ def save_states(global_step, writer, y_hat, y, input_lengths, checkpoint_dir=Non
         y_hat = y_hat.squeeze(-1)
 
     # (B, T)
-    y_hat = sample_from_discretized_mix_logistic(
-    y_hat, log_scale_min=-32)
+    #y_hat = sample_from_discretized_mix_logistic(
+    #y_hat, log_scale_min=-32)
     # (T,)
     y_hat = y_hat[idx].view(-1).data.cpu().numpy()
     y = y[idx].view(-1).data.cpu().numpy()
@@ -547,14 +547,21 @@ def __train_step(device, phase, epoch, global_step, global_test_step,
         # you must make sure that batch size % num gpu == 0
         y_hat = torch.nn.parallel.data_parallel(model, (x, c, g, False))
     else:
-        print('x',x.shape)
-        print('c',c.shape)
+        #print('x',x.shape)
+        #print('c',c.shape)
         y_hat = model(x, c, g, False)
 
-    print('yhat:',y_hat.shape)
-    print('y:',y.shape)
-    print('y_hat.size(1):',y_hat.size(1))
-    loss = criterion(y_hat[0, :, :-1], y[ :, :, 1:], mask=mask)
+    #print('yhat:',y_hat.shape)
+    #print('y:',y.shape)
+    #print('y_hat[:, :, 0]:', y_hat[:, :, 0].size())
+    #print('y[:, :, 0, 0]:', y[:, :, 0, 0].size())
+    
+    #loss = torch.zeros(y_hat.size()[2])
+    loss = 0 
+    for i in range (y_hat.size()[2]):
+        loss += criterion(y_hat[:, :, i], y[ :, :, i, 0])
+    loss = loss/(y_hat.size()[2])
+    #print('loss:', loss)
 
     if train and step > 0 and step % 1000 == 0:
         save_states(step, writer, y_hat, y, input_lengths, checkpoint_dir)
@@ -587,7 +594,7 @@ def __train_step(device, phase, epoch, global_step, global_test_step,
 
 
 def train_loop(device, model, data_loaders, optimizer, writer, checkpoint_dir=None):
-    criterion = MaskedCrossEntropyLoss()
+    criterion = torch.nn.MSELoss()
 
     ema = None
 
