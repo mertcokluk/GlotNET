@@ -99,7 +99,7 @@ def wavegen(model, length=None, c=None, g=None, initial_value=None,
     with torch.no_grad():
         y_hat = model.incremental_forward(
             initial_input, c=c, g=g, T=length, tqdm=tqdm, softmax=True, quantize=True,
-            log_scale_min=hparams.log_scale_min)
+            log_scale_min=-32)
 
     y_hat = y_hat.view(-1).cpu().data.numpy()
 
