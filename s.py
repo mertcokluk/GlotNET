@@ -128,7 +128,6 @@ if __name__ == "__main__":
         c = np.load(conditional_path)
         if c.shape[1] != 80:
             np.swapaxes(c, 0, 1)
-    	length = c.shape[0]
         if max_abs_value > 0:
             min_, max_ = 0, max_abs_value
             if symmetric_mels:
@@ -153,7 +152,8 @@ if __name__ == "__main__":
     checkpoint_name = splitext(basename(checkpoint_path))[0]
 
     os.makedirs(dst_dir, exist_ok=True)
-
+    length = c.shape[0]
+    
     # DO generate
     glot = wavegen(model, length, c=c, g=speaker_id, initial_value=initial_value, fast=True)
 
