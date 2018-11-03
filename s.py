@@ -24,13 +24,8 @@ from os.path import dirname, join, basename, splitext
 import torch
 import numpy as np
 from nnmnkwii import preprocessing as P
-from keras.utils import np_utils
 from tqdm import tqdm
-import librosa
 
-from wavenet_vocoder.util import is_mulaw_quantize, is_mulaw, is_raw
-
-import audio
 
 
 torch.set_num_threads(4)
