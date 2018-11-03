@@ -123,6 +123,14 @@ When this is done, you will see time-aligned extracted features (audio, glottal 
 
 ### 2. Training(The rest is under construction, it may take a while)
 
+>Note: Training with default parameters is available!
+you can run(a preprocessed data-root, lj-glot is on the repo):
+
+```
+python t.py --data-root=lj-glot
+```
+
+
 >Note: for multi gpu training, you have better ensure that batch_size % num_gpu == 0
 
 Usage:
@@ -170,6 +178,12 @@ tensorboard --logdir=log
 ```
 
 ### 4. Synthesize glottal excitation from a checkpoint
+
+>Note: Synthesis with default parameters is available!
+you can run:
+```
+python s.py --conditional=lj-glot/ljspeech-mel-00001.npy  checkpoints/checkpoint_step000001163.pth  gen
+```
 
 Usage:
 
