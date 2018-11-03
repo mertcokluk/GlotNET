@@ -87,7 +87,7 @@ def wavegen(model, length=None, c=None, g=None, initial_value=None,
     if initial_value is None:
     	initial_value = 0.0
 
-    initial_input = torch.zeros(1, 1, 1).fill_(initial_value)
+    initial_input = torch.zeros(1, 254, 1).fill_(initial_value)
 
     g = None if g is None else torch.LongTensor([g])
 
