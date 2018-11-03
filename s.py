@@ -62,7 +62,7 @@ def wavegen(model, length=None, c=None, g=None, initial_value=None,
     Returns:
         numpy.ndarray : Generated waveform samples
     """
-    from train import sanity_check
+    from t import sanity_check
     sanity_check(model, c, g)
 
     c = _to_numpy(c)
@@ -140,7 +140,7 @@ if __name__ == "__main__":
     else:
         c = None
 
-    from train import build_model
+    from t import build_model
 
     # Model
     model = build_model().to(device)
