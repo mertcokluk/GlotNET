@@ -82,7 +82,7 @@ def wavegen(model, length=None, c=None, g=None, initial_value=None,
             assert c.ndim == 2
 
         # B x C x T
-        c = torch.FloatTensor(c.T).unsqueeze(0)
+        c = torch.FloatTensor(c).unsqueeze(0)
 
     if initial_value is None:
     	initial_value = 0.0
