@@ -6,7 +6,6 @@ usage: synthesis.py [options] <checkpoint> <dst_dir>
 
 options:
     --preset=<json>                   Path of preset parameters (json).
-    --length=<T>                      Steps to generate [default: 32000].
     --initial-value=<n>               Initial value for the WaveNet decoder.
     --conditional=<p>                 Conditional features path.
     --symmetric-mels                  Symmetric mel.
@@ -111,8 +110,6 @@ if __name__ == "__main__":
     print("Command line args:\n", args)
     checkpoint_path = args["<checkpoint>"]
     dst_dir = args["<dst_dir>"]
-
-    length = int(args["--length"])
     initial_value = args["--initial-value"]
     initial_value = None if initial_value is None else float(initial_value)
     conditional_path = args["--conditional"]
@@ -131,6 +128,7 @@ if __name__ == "__main__":
         c = np.load(conditional_path)
         if c.shape[1] != 80:
             np.swapaxes(c, 0, 1)
+    	length = c.shape[0]
         if max_abs_value > 0:
             min_, max_ = 0, max_abs_value
             if symmetric_mels:
