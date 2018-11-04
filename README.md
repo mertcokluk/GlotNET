@@ -121,14 +121,7 @@ python preprocess.py cmu_arctic ~/data/cmu_arctic ./data/cmu_arctic --preset=pre
 
 When this is done, you will see time-aligned extracted features (audio, glottal exciation, vocal tract filter and mel-spectrogram) in `./data/cmu_arctic`.
 
-### 2. Training(The rest is under construction, it may take a while)
-
->Note: Training with default parameters is available!
-you can run(a preprocessed data-root, lj-glot is on the repo):
-
-```
-python t.py --data-root=lj-glot
-```
+### 2. Training
 
 
 >Note: for multi gpu training, you have better ensure that batch_size % num_gpu == 0
@@ -167,7 +160,14 @@ python train.py --data-root=./data/cmu_arctic/ --speaker-id=0 \
 ```
 
 
+Training(conditioned on mel-spectrogram) with default parameters is available!
+you can run(a preprocessed data-root, lj-glot is on the repo):
+
 ```
+python t.py --data-root=lj-glot
+```
+
+
 
 ### 3. Monitor with Tensorboard
 
@@ -178,12 +178,6 @@ tensorboard --logdir=log
 ```
 
 ### 4. Synthesize glottal excitation from a checkpoint
-
->Note: Synthesis with default parameters is available!
-you can run:
-```
-python s.py --conditional=lj-glot/ljspeech-mel-00001.npy  checkpoints/checkpoint_step000001163.pth  gen
-```
 
 Usage:
 
@@ -204,7 +198,14 @@ python synthesis.py --hparams="parameters you want to override" \
     generated/test_awb \
     --conditional=./data/cmu_arctic/cmu_arctic-mel-00001.npy
 ```
-### 5. Post Process
+
+
+Synthesis with default parameters is available!
+you can run:
+```
+python s.py --conditional=lj-glot/ljspeech-mel-00001.npy  checkpoints/checkpoint_step000001163.pth  gen
+```
+### 5. Post Process(Under construction!)
 
 <!--
 ## Misc
