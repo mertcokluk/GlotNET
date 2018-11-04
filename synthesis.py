@@ -87,32 +87,14 @@ def wavegen(model, length=None, c=None, g=None, initial_value=None,
             raise RuntimeError(
                 "Expected 2-dim shape (T, {}) for the conditional feature, but {} was actually given.".format(hparams.cin_channels, c.shape))
             assert c.ndim == 2
-        Tc = c.shape[0]
-        upsample_factor = audio.get_hop_size()
-        # Overwrite length according to feature size
-        length = Tc * upsample_factor
-        # (Tc, D) -> (Tc', D)
-        # Repeat features before feeding it to the network
-        if not hparams.upsample_conditional_features:
-            c = np.repeat(c, upsample_factor, axis=0)
 
         # B x C x T
-        c = torch.FloatTensor(c.T).unsqueeze(0)
+        c = torch.FloatTensor(c).unsqueeze(0)
 
     if initial_value is None:
-        if is_mulaw_quantize(hparams.input_type):
-            initial_value = P.mulaw_quantize(0, hparams.quantize_channels)
-        else:
-            initial_value = 0.0
+    	initial_value = 0.0
 
-    if is_mulaw_quantize(hparams.input_type):
-        assert initial_value >= 0 and initial_value < hparams.quantize_channels
-        initial_input = np_utils.to_categorical(
-            initial_value, num_classes=hparams.quantize_channels).astype(np.float32)
-        initial_input = torch.from_numpy(initial_input).view(
-            1, 1, hparams.quantize_channels)
-    else:
-        initial_input = torch.zeros(1, 1, 1).fill_(initial_value)
+    initial_input = torch.zeros(1, 254, 1).fill_(initial_value)
 
     g = None if g is None else torch.LongTensor([g])
 
@@ -126,13 +108,7 @@ def wavegen(model, length=None, c=None, g=None, initial_value=None,
             initial_input, c=c, g=g, T=length, tqdm=tqdm, softmax=True, quantize=True,
             log_scale_min=hparams.log_scale_min)
 
-    if is_mulaw_quantize(hparams.input_type):
-        y_hat = y_hat.max(1)[1].view(-1).long().cpu().data.numpy()
-        y_hat = P.inv_mulaw_quantize(y_hat, hparams.quantize_channels)
-    elif is_mulaw(hparams.input_type):
-        y_hat = P.inv_mulaw(y_hat.view(-1).cpu().data.numpy(), hparams.quantize_channels)
-    else:
-        y_hat = y_hat.view(-1).cpu().data.numpy()
+    y_hat = y_hat.view(-1).cpu().data.numpy()
 
     return y_hat
 
@@ -194,13 +170,15 @@ if __name__ == "__main__":
     checkpoint_name = splitext(basename(checkpoint_path))[0]
 
     os.makedirs(dst_dir, exist_ok=True)
-    dst_wav_path = join(dst_dir, "{}{}.wav".format(checkpoint_name, file_name_suffix))
+    length = c.shape[0]
 
     # DO generate
-    waveform = wavegen(model, length, c=c, g=speaker_id, initial_value=initial_value, fast=True)
+    glot = wavegen(model, length, c=c, g=speaker_id, initial_value=initial_value, fast=True)
 
     # save
-    librosa.output.write_wav(dst_wav_path, waveform, sr=hparams.sample_rate)
+    glot_filename = "glot-{}.npy".format(checkpoint_name)
+    np.save(os.path.join(dst_dir, glot_filename),
+            glot.astype(np.float32), allow_pickle=False)
 
-    print("Finished! Check out {} for generated audio samples.".format(dst_dir))
+    print("Finished! Check out {} for generated glottal excitation data.".format(dst_dir))
     sys.exit(0)

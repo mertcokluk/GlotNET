@@ -5,7 +5,6 @@ usage: train.py [options]
 options:
     --data-root=<dir>            Directory contains preprocessed features.
     --checkpoint-dir=<dir>       Directory where to save model checkpoints [default: checkpoints].
-    --preset=<json>              Path of preset parameters (json).
     --checkpoint=<path>          Restore model from checkpoint path if given.
     --restore-parts=<path>       Restore part of the model.
     --log-event-path=<name>      Log event path.
