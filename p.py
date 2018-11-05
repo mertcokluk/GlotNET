@@ -23,7 +23,7 @@ def postprocess(g=None, vt=None):
     length = g.shape[0]
     b = np.array([1, -0.99])
     w = np.zeros(1) 
-    for j in length:
+    for j in range (length):
         gj = g[j]
         vtj = vt[j]
         vtinvj = dsp.deconvolve([1,0,0,0,0,0,0,0], vtj)[0] 
