@@ -40,8 +40,8 @@ if __name__ == "__main__":
     args = docopt(__doc__)
     print("Command line args:\n", args)
     dst_dir = args["<dst_dir>"]
-    vocaltract_path = args["--vocal-tract"]
-    glot_path = args["--glottal-flow"]
+    vocaltract_path = args["<vocal-tract>"]
+    glot_path = args["<glottal-flow>"]
     file_name_suffix = args["--file-name-suffix"]
     output_html = args["--output-html"]
     preset = args["--preset"]
