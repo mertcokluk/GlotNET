@@ -38,28 +38,9 @@ def _process_utterance(out_dir, index, wav_path, text):
     if hparams.rescaling:
         wav = wav / np.abs(wav).max() * hparams.rescaling_max
         
-    # Mu-law quantize
-    if is_mulaw_quantize(hparams.input_type):
-        # [0, quantize_channels)
-        out = P.mulaw_quantize(wav, hparams.quantize_channels)
-
-        # Trim silences
-        start, end = audio.start_and_end_indices(out, hparams.silence_threshold)
-        wav = wav[start:end]
-        out = out[start:end]
-        constant_values = P.mulaw_quantize(0, hparams.quantize_channels)
-        out_dtype = np.int16
-    elif is_mulaw(hparams.input_type):
-        # [-1, 1]
-        out = P.mulaw(wav, hparams.quantize_channels)
-        constant_values = P.mulaw(0.0, hparams.quantize_channels)
-        out_dtype = np.float32
-    else:
-        # [-1, 1]
-        out = wav
-        constant_values = 0.0
-        out_dtype = np.float32
-
+    out = wav
+    constant_values = 0.0
+    out_dtype = np.float32
 
     p_vt=5
     p_gl=5

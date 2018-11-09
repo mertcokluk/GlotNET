@@ -50,6 +50,7 @@ You can find a generated wav file in `generated` directory. Wonder how it works?
 ## Requirements
 
 - Python 3
+- SciPy
 - CUDA >= 8.0
 - PyTorch >= v0.4.0
 - TensorFlow >= v1.3
@@ -113,7 +114,7 @@ Supported `${dataset_name}`s for now are
 
 - `ljspeech` (single speaker)
 
-Integration of the CMU ARCTIC dataset is coming soon! 
+- `cmu_arctic` (multi speaker)
 
 Assuming you use preset parameters known to work good for CMU ARCTIC dataset and have data in `~/data/cmu_arctic`, then you can preprocess data by:
 
