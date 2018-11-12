@@ -525,6 +525,12 @@ def __train_step(device, phase, epoch, global_step, global_test_step,
             0.001, step, 1.0)
         for param_group in optimizer.param_groups:
             param_group['lr'] = current_lr
+            current_eps = param_group['eps']
+            #current_params = param_group['params'] 
+            current_optimizerbeta0 = param_group['betas'][0]
+            current_optimizerbeta1 = param_group['betas'][1]
+            current_amsgrad = param_group['amsgrad']
+            current_weightdecay = param_group['weight_decay'] 
     optimizer.zero_grad()
 
     # Prepare data
@@ -581,6 +587,11 @@ def __train_step(device, phase, epoch, global_step, global_test_step,
             for name, param in model.named_parameters():
                 if name in ema.shadow:
                     ema.update(name, param.data)
+        for name, param in model.named_parameters():
+            print ('modelparameters:', name, param.data.shape)
+            writer.add_histogram("{}".format(name), param, step)
+        #for param_group in optimizer.param_groups:
+            #print ('optimizerparameters:', param_group['amsgrad'])
 
     # Logs
     writer.add_scalar("{} loss".format(phase), float(loss.item()), step)
@@ -588,6 +599,12 @@ def __train_step(device, phase, epoch, global_step, global_test_step,
         if clip_thresh > 0:
             writer.add_scalar("gradient norm", grad_norm, step)
         writer.add_scalar("learning rate", current_lr, step)
+        writer.add_scalar("eps", current_eps, step)
+        #writer.add_graph("params", current_params, step)
+        #writer.add_graph("amsgrad", current_amsgrad, step)
+        writer.add_scalar("optimizerbeta_firstargument", current_optimizerbeta0, step)
+        writer.add_scalar("optimizerbeta_secondargument", current_optimizerbeta1, step)
+        writer.add_scalar("weight_decay", current_weightdecay, step)
 
     return loss.item()
 
