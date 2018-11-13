@@ -362,8 +362,6 @@ def collate_fn(batch):
     global_conditioning = len(batch[0]) >= 3 and hparams.gin_channels > 0
 
 
-    max_time_frames = None
-
     # Time resolution adjustment
     if local_conditioning:
         new_batch = []
@@ -528,6 +526,12 @@ def __train_step(device, phase, epoch, global_step, global_test_step,
             hparams.initial_learning_rate, step, **hparams.lr_schedule_kwargs)
         for param_group in optimizer.param_groups:
             param_group['lr'] = current_lr
+            current_eps = param_group['eps']
+            #current_params = param_group['params'] 
+            current_optimizerbeta0 = param_group['betas'][0]
+            current_optimizerbeta1 = param_group['betas'][1]
+            current_amsgrad = param_group['amsgrad']
+            current_weightdecay = param_group['weight_decay'] 
     optimizer.zero_grad()
 
     # Prepare data
@@ -584,6 +588,12 @@ def __train_step(device, phase, epoch, global_step, global_test_step,
             for name, param in model.named_parameters():
                 if name in ema.shadow:
                     ema.update(name, param.data)
+        if step%extendedlog_period == 0:
+            for name, param in model.named_parameters():
+                #print ('modelparameters:', name, param.data.shape)
+                writer.add_histogram("{}".format(name), param, step)
+            #for param_group in optimizer.param_groups:
+                #print ('optimizerparameters:', param_group['amsgrad'])
 
     # Logs
     writer.add_scalar("{} loss".format(phase), float(loss.item()), step)
@@ -591,6 +601,13 @@ def __train_step(device, phase, epoch, global_step, global_test_step,
         if clip_thresh > 0:
             writer.add_scalar("gradient norm", grad_norm, step)
         writer.add_scalar("learning rate", current_lr, step)
+        if step%extendedlog_period == 0:
+            writer.add_scalar("eps", current_eps, step)
+            #writer.add_graph("params", current_params, step)
+            #writer.add_graph("amsgrad", current_amsgrad, step)
+            writer.add_scalar("optimizerbeta_firstargument", current_optimizerbeta0, step)
+            writer.add_scalar("optimizerbeta_secondargument", current_optimizerbeta1, step)
+            writer.add_scalar("weight_decay", current_weightdecay, step)
 
     return loss.item()
 
@@ -682,9 +699,6 @@ def save_checkpoint(device, model, optimizer, step, checkpoint_dir, epoch, ema=N
 
 def build_model():
 
-    if hparams.out_channels != hparams.quantize_channels:
-       raise RuntimeError("out_channels must equal to quantize_chennels if input_type is 'mulaw-quantize'")
-
     model = getattr(builder, hparams.builder)(
         out_channels=hparams.out_channels,
         layers=hparams.layers,
@@ -698,7 +712,6 @@ def build_model():
         n_speakers=hparams.n_speakers,
         dropout=hparams.dropout,
         kernel_size=hparams.kernel_size,
-        freq_axis_kernel_size=hparams.freq_axis_kernel_size,
         legacy=hparams.legacy,
     )
     return model
@@ -857,6 +870,8 @@ if __name__ == "__main__":
         hparams.adam_beta1, hparams.adam_beta2),
         eps=hparams.adam_eps, weight_decay=hparams.weight_decay,
         amsgrad=hparams.amsgrad)
+
+    extendedlog_period = 1000
 
     if checkpoint_restore_parts is not None:
         restore_parts(checkpoint_restore_parts, model)
