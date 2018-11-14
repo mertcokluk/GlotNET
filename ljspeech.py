@@ -140,7 +140,7 @@ def _process_utterance(out_dir, index, wav_path, text):
         a = Hvt2;
         ag = Hg2;
         
-        print(j)
+        #print(j)
         glot[j-1]=g.T
         vtfilter[j-1]=a.T
     

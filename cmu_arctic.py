@@ -53,7 +53,7 @@ def end_at(labels):
 
 
 def _process_utterance(out_dir, index, speaker_id, wav_path, text):
-    sr = hparams.sample_rate
+    fs = hparams.sample_rate
 
     # Load the audio to a numpy array. Resampled if needed
     wav = audio.load_wav(wav_path)
@@ -176,7 +176,7 @@ def _process_utterance(out_dir, index, speaker_id, wav_path, text):
         a = Hvt2;
         ag = Hg2;
         
-        print(j)
+        #print(j)
         glot[j-1]=g.T
         vtfilter[j-1]=a.T
     
