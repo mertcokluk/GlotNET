@@ -174,7 +174,8 @@ if __name__ == "__main__":
 
     # DO generate
     glot = wavegen(model, length, c=c, g=speaker_id, initial_value=initial_value, fast=True)
-
+    # reshape
+    glot = np.reshape(glot,(len(glot)//254, 254))
     # save
     glot_filename = "glot-{}.npy".format(checkpoint_name)
     np.save(os.path.join(dst_dir, glot_filename),
