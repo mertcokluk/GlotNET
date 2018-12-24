@@ -73,6 +73,10 @@ pip install wavenet_vocoder
 -->
 
 ## Getting started
+### A few notes on usage
+Input data to network must be 'raw' other options 'mu-law-quantization' are for pure wavenet.
+I prefer not to use upsampling of conditional features. If you are eager to do so go over scripts quickly for modifications and arrange interpolation layers' factors so that factors yields 254.
+For now networks preprocess LJSpeech only, if you want to feed in other dataset corresponding scripts must be provided.
 
 ### Preset parameters
 
