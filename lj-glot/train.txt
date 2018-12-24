@@ -1,3 +1,0 @@
-ljspeech-audio-00001.npy|ljspeech-mel-00001.npy|ljspeech-glot-00001.npy|ljspeech-vt-00001.npy|213760|Printing, in the only sense with which we are at present concerned, differs from most if not from all the arts and crafts represented in the Exhibition
-ljspeech-audio-00002.npy|ljspeech-mel-00002.npy|ljspeech-glot-00002.npy|ljspeech-vt-00002.npy|42752|in being comparatively modern.
-ljspeech-audio-00003.npy|ljspeech-mel-00003.npy|ljspeech-glot-00003.npy|ljspeech-vt-00003.npy|214016|For although the Chinese took impressions from wood blocks engraved in relief for centuries before the woodcutters of the Netherlands, by a similar process
