@@ -80,21 +80,29 @@ def wavegen(model, length=None, c=None, g=None, initial_value=None,
         model.make_generation_fast_()
 
     if c is None:
-        assert length is not None
+         assert length is not None
     else:
         # (Tc, D)
         if c.ndim != 2:
             raise RuntimeError(
                 "Expected 2-dim shape (T, {}) for the conditional feature, but {} was actually given.".format(hparams.cin_channels, c.shape))
             assert c.ndim == 2
-
+        Tc = c.shape[0]
+        upsample_factor = 254
+        # Overwrite length according to feature size
+        length = Tc * upsample_factor
+        # (Tc, D) -> (Tc', D)
+        # Repeat features before feeding it to the network
+        if not hparams.upsample_conditional_features:
+            c = np.repeat(c, upsample_factor, axis=0)
+   
         # B x C x T
-        c = torch.FloatTensor(c).unsqueeze(0)
-
+        c = torch.FloatTensor(c.T).unsqueeze(0)
+   
     if initial_value is None:
-    	initial_value = 0.0
+       initial_value = 0.0
 
-    initial_input = torch.zeros(1, 254, 1).fill_(initial_value)
+    initial_input = torch.zeros(1, 1, 1).fill_(initial_value)
 
     g = None if g is None else torch.LongTensor([g])
 
@@ -170,7 +178,7 @@ if __name__ == "__main__":
     checkpoint_name = splitext(basename(checkpoint_path))[0]
 
     os.makedirs(dst_dir, exist_ok=True)
-    length = c.shape[0]
+    length = c.shape[0]*254
 
     # DO generate
     glot = wavegen(model, length, c=c, g=speaker_id, initial_value=initial_value, fast=True)

@@ -42,6 +42,26 @@ def _process_utterance(out_dir, index, wav_path, text):
     constant_values = 0.0
     out_dtype = np.float32
 
+    # Compute a mel-scale spectrogram from the trimmed wav:
+    # (N, D)
+    mel_spectrogram = audio.melspectrogram(wav).astype(np.float32).T
+    # lws pads zeros internally before performing stft
+    # this is needed to adjust time resolution between audio and mel-spectrogram
+    l, r = audio.lws_pad_lr(wav, hparams.fft_size, audio.get_hop_size())
+
+    # zero pad for quantized signal
+    out = np.pad(out, (l, r), mode="constant", constant_values=constant_values)
+    N = mel_spectrogram.shape[0]
+    assert len(out) >= N * audio.get_hop_size()
+
+    # time resolution adjustment
+    # ensure length of raw audio is multiple of hop_size so that we can use
+    # transposed convolution to upsample
+    out = out[:N * audio.get_hop_size()]
+    assert len(out) % audio.get_hop_size() == 0
+
+    timesteps = len(out)
+
     p_vt=5
     p_gl=5
     d=0.99
@@ -74,12 +94,12 @@ def _process_utterance(out_dir, index, wav_path, text):
     % diminish ripple in the beginning of the frame. The ramp is removed after
     % filtering.
     '''
-    le=np.int(len(wav)/hparams.hop_size)
+    le=np.int(len(out)/hparams.hop_size)
     glot=np.zeros([le, 254])
     vtfilter=np.zeros([le, 5])
     
     for j in range(le):
-        w = wav[hparams.hop_size*(j):hparams.hop_size*(j+1)]
+        w = out[hparams.hop_size*(j):hparams.hop_size*(j+1)]
         
         #print(wav[(hparams.hop_size)*(i):(hparams.hop_size)*(i+1)])
         for i in range(hpfilt):
@@ -94,7 +114,11 @@ def _process_utterance(out_dir, index, wav_path, text):
         windowed = w*win
         t=dsp.correlate(windowed,windowed)
         l=len(win)
-        Hg1 = lpcsolve(t[l:l+1],t[l+1:l+2]);
+        try:
+            Hg1 = lpcsolve(t[l:l+1],t[l+1:l+2]);
+        except np.linalg.linalg.LinAlgError:
+            Hg1 = np.zeros(1)
+            
         y = dsp.lfilter(Hg1,1,signal);
         y = y[preflt:];
 
@@ -106,7 +130,10 @@ def _process_utterance(out_dir, index, wav_path, text):
         
         windowedy = y*win
         r=dsp.correlate(windowedy,windowedy)
-        Hvt1 = lpcsolve(r[l:l+p_vt],r[l+1:l+p_vt+1]);
+        try:
+            Hvt1 = lpcsolve(r[l:l+p_vt],r[l+1:l+p_vt+1]);
+        except np.linalg.linalg.LinAlgError:
+            Hvt1 = np.zeros(p_vt)
         g1 = dsp.lfilter(Hvt1,1,signal);
         g1 = dsp.lfilter(a, b, g1);
         g1 = g1[preflt:];
@@ -118,7 +145,10 @@ def _process_utterance(out_dir, index, wav_path, text):
         '''
         windowedg1 = w*g1
         u=dsp.correlate(windowedg1,windowedg1)
-        Hg2 = lpcsolve(u[l:l+p_gl],u[l+1:l+p_gl+1]);
+        try:
+            Hg2 = lpcsolve(u[l:l+p_gl],u[l+1:l+p_gl+1]);
+        except np.linalg.linalg.LinAlgError:
+            Hg2 = np.zeros(p_gl)
         y = dsp.lfilter(Hg2,1,signal);
         y = dsp.lfilter(a, b, y);
         y = y[preflt:];
@@ -130,7 +160,10 @@ def _process_utterance(out_dir, index, wav_path, text):
         '''
         windowedynew = y*win
         t=dsp.correlate(windowedynew,windowedynew)
-        Hvt2 = lpcsolve(t[l:l+p_vt],t[l+1:l+p_vt+1]);
+        try:
+            Hvt2 = lpcsolve(t[l:l+p_vt],t[l+1:l+p_vt+1]);
+        except np.linalg.linalg.LinAlgError:
+            Hvt2 = np.zeros(p_vt)
         dg = dsp.lfilter(Hvt2,1,signal);
         g = dsp.lfilter(a, b, dg);
         g = g[preflt:];
@@ -143,28 +176,8 @@ def _process_utterance(out_dir, index, wav_path, text):
         #print(j)
         glot[j-1]=g.T
         vtfilter[j-1]=a.T
-    
- 
-    # Compute a mel-scale spectrogram from the trimmed wav:
-    # (N, D)
-    mel_spectrogram = audio.melspectrogram(wav).astype(np.float32).T
-    # lws pads zeros internally before performing stft
-    # this is needed to adjust time resolution between audio and mel-spectrogram
-    l, r = audio.lws_pad_lr(wav, hparams.fft_size, audio.get_hop_size())
 
-    # zero pad for quantized signal
-    out = np.pad(out, (l, r), mode="constant", constant_values=constant_values)
-    N = mel_spectrogram.shape[0]
-    assert len(out) >= N * audio.get_hop_size()
-
-    # time resolution adjustment
-    # ensure length of raw audio is multiple of hop_size so that we can use
-    # transposed convolution to upsample
-    out = out[:N * audio.get_hop_size()]
-    assert len(out) % audio.get_hop_size() == 0
-
-    timesteps = len(out)
-    
+    glot = np.reshape(glot, [254*le])
     #print(glot)
 
     # Write the spectrograms to disk:

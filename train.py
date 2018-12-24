@@ -47,11 +47,12 @@ from nnmnkwii.datasets import FileSourceDataset, FileDataSource
 import librosa.display
 
 from sklearn.model_selection import train_test_split
-#from keras.utils import np_utils
+from keras.utils import np_utils
 from tensorboardX import SummaryWriter
 from matplotlib import cm
 from warnings import warn
 
+from wavenet_vocoder.util import is_mulaw_quantize, is_mulaw, is_raw, is_scalar_input
 from wavenet_vocoder.mixture import discretized_mix_logistic_loss
 from wavenet_vocoder.mixture import sample_from_discretized_mix_logistic
 
@@ -89,9 +90,9 @@ def _pad(seq, max_len, constant_values=0):
                   mode='constant', constant_values=constant_values)
 
 
-def _pad_2d(x, max_len, b_pad=0):
+def _pad_2d(x, max_len, b_pad=0, constant_values=0):
     x = np.pad(x, [(b_pad, max_len - len(x) - b_pad), (0, 0)],
-               mode="constant", constant_values=0)
+               mode="constant", constant_values=constant_values)
     return x
 
 
@@ -124,6 +125,7 @@ class _NPYDataSource(FileDataSource):
         with open(meta, "rb") as f:
             lines = f.readlines()
         l = lines[0].decode("utf-8").split("|")
+        print('lenghttext:', len(l))
         assert len(l) == 6 or len(l) == 7
         self.multi_speaker = len(l) == 7
         self.lengths = list(
@@ -170,9 +172,9 @@ class _NPYDataSource(FileDataSource):
         return np.load(path)
 
 
-class GlottalExcitationDataSource(_NPYDataSource):
+class RawAudioDataSource(_NPYDataSource):
     def __init__(self, data_root, **kwargs):
-        super(GlottalExcitationDataSource, self).__init__(data_root, 2, **kwargs)
+        super(RawAudioDataSource, self).__init__(data_root, 2, **kwargs)
 
 
 class MelSpecDataSource(_NPYDataSource):
@@ -241,14 +243,14 @@ class PyTorchDataset(object):
         else:
             mel = self.Mel[idx]
 
-        glottal_excitation = self.X[idx]
+        raw_audio = self.X[idx]
         if self.multi_speaker:
             speaker_id = self.X.file_data_source.speaker_ids[idx]
         else:
             speaker_id = None
 
         # (x,c,g)
-        return glottal_excitation, mel, speaker_id
+        return raw_audio, mel, speaker_id
 
     def __len__(self):
         return len(self.X)
@@ -343,6 +345,11 @@ def ensure_divisible(length, divisible_by=256, lower=True):
         return length + (divisible_by - length % divisible_by)
 
 
+def assert_ready_for_upsampling(x, c):
+    print('x.shape',x.shape)
+    print('cshape', c.shape)
+    assert x.shape[1] == len(c) #== 254 #audio.get_hop_size() #len(x) % len(c) == 0 and 
+
 
 def collate_fn(batch):
     """Create batch
@@ -357,40 +364,79 @@ def collate_fn(batch):
             - x (FloatTensor) : Network inputs (B, C, T)
             - y (LongTensor)  : Network targets (B, T, 1)
     """
-    #print('batch:', batch[0][0].shape, batch[0][1].shape, batch[0][2])
+
     local_conditioning = len(batch[0]) >= 2 and hparams.cin_channels > 0
     global_conditioning = len(batch[0]) >= 3 and hparams.gin_channels > 0
 
+    if hparams.max_time_sec is not None:
+        max_time_steps = int(hparams.max_time_sec * hparams.sample_rate)
+    elif hparams.max_time_steps is not None:
+        max_time_steps = hparams.max_time_steps
+    else:
+        max_time_steps = None
 
     # Time resolution adjustment
     if local_conditioning:
         new_batch = []
         for idx in range(len(batch)):
             x, c, g = batch[idx]
-            c = c[2:-2]
+            if hparams.upsample_conditional_features:
+                assert_ready_for_upsampling(x, c)
+                if max_time_steps is not None:
+                    max_steps = ensure_divisible(max_time_steps, audio.get_hop_size(), True)
+                    if len(x) > max_steps:
+                        max_time_frames = max_steps // audio.get_hop_size()
+                        s = np.random.randint(0, len(c) - max_time_frames)
+                        ts = s * audio.get_hop_size()
+                        x = x[ts:ts + audio.get_hop_size() * max_time_frames]
+                        c = c[s:s + max_time_frames, :]
+                        assert_ready_for_upsampling(x, c)
+            else:
+                x, c = audio.adjust_time_resolution(x, c)
+                if max_time_steps is not None and len(x) > max_time_steps:
+                    s = np.random.randint(0, len(x) - max_time_steps)
+                    x, c = x[s:s + max_time_steps], c[s:s + max_time_steps, :]
+                assert len(x) == len(c)
             new_batch.append((x, c, g))
         batch = new_batch
-        #print('batchafter:', batch[0][0].shape, batch[0][1].shape, batch[0][2])
     else:
         new_batch = []
         for idx in range(len(batch)):
             x, c, g = batch[idx]
+            x = audio.trim(x)
+            if max_time_steps is not None and len(x) > max_time_steps:
+                s = np.random.randint(0, len(x) - max_time_steps)
+                if local_conditioning:
+                    x, c = x[s:s + max_time_steps], c[s:s + max_time_steps, :]
+                else:
+                    x = x[s:s + max_time_steps]
             new_batch.append((x, c, g))
         batch = new_batch
 
     # Lengths
-    input_lengths = [z[0].shape[0] for z in batch]
-    #print('inputlen', input_lengths)
+    input_lengths = [len(x[0]) for x in batch]
     max_input_len = max(input_lengths)
 
     # (B, T, C)
     # pad for time-axis
-
-    x_batch = np.array([_pad_2d(x[0], max_input_len)
-                            for x in batch], dtype=np.float32) 
-    #print('(x_batch.shape):', x_batch.shape)	
+    if is_mulaw_quantize(hparams.input_type):
+        padding_value = P.mulaw_quantize(0, mu=hparams.quantize_channels)
+        x_batch = np.array([_pad_2d(np_utils.to_categorical(
+            x[0], num_classes=hparams.quantize_channels),
+            max_input_len, 0, padding_value) for x in batch], dtype=np.float32)
+    else:
+        x_batch = np.array([_pad_2d(x[0].reshape(-1, 1), max_input_len)
+                            for x in batch], dtype=np.float32)
     assert len(x_batch.shape) == 3
 
+    # (B, T)
+    if is_mulaw_quantize(hparams.input_type):
+        padding_value = P.mulaw_quantize(0, mu=hparams.quantize_channels)
+        y_batch = np.array([_pad(x[0], max_input_len, constant_values=padding_value)
+                            for x in batch], dtype=np.int)
+    else:
+        y_batch = np.array([_pad(x[0], max_input_len) for x in batch], dtype=np.float32)
+    assert len(y_batch.shape) == 2
 
     # (B, T, D)
     if local_conditioning:
@@ -409,10 +455,11 @@ def collate_fn(batch):
 
     # Covnert to channel first i.e., (B, C, T)
     x_batch = torch.FloatTensor(x_batch).transpose(1, 2).contiguous()
-    
-    y_batch = x_batch
     # Add extra axis
-    y_batch = torch.FloatTensor(y_batch).unsqueeze(-1).contiguous()
+    if is_mulaw_quantize(hparams.input_type):
+        y_batch = torch.LongTensor(y_batch).unsqueeze(-1).contiguous()
+    else:
+        y_batch = torch.FloatTensor(y_batch).unsqueeze(-1).contiguous()
 
     input_lengths = torch.LongTensor(input_lengths)
 
@@ -450,20 +497,34 @@ def eval_model(global_step, writer, device, model, y, c, g, input_lengths, eval_
     y_target = y[idx].view(-1).data.cpu().numpy()[:length]
 
     if c is not None:
-        	c = c[idx, :, :length].unsqueeze(0)
-    assert c.dim() == 3
-    print("Shape of local conditioning features: {}".format(c.size()))
+        if hparams.upsample_conditional_features:
+            c = c[idx, :, :length // audio.get_hop_size()].unsqueeze(0)
+        else:
+            c = c[idx, :, :length].unsqueeze(0)
+        assert c.dim() == 3
+        print("Shape of local conditioning features: {}".format(c.size()))
     if g is not None:
         # TODO: test
         g = g[idx]
         print("Shape of global conditioning features: {}".format(g.size()))
 
     # Dummy silence
-    initial_value = 0.0
+    if is_mulaw_quantize(hparams.input_type):
+        initial_value = P.mulaw_quantize(0, hparams.quantize_channels)
+    elif is_mulaw(hparams.input_type):
+        initial_value = P.mulaw(0.0, hparams.quantize_channels)
+    else:
+        initial_value = 0.0
     print("Intial value:", initial_value)
 
     # (C,)
-    initial_input = torch.zeros(1, 254, 1).fill_(initial_value)
+    if is_mulaw_quantize(hparams.input_type):
+        initial_input = np_utils.to_categorical(
+            initial_value, num_classes=hparams.quantize_channels).astype(np.float32)
+        initial_input = torch.from_numpy(initial_input).view(
+            1, 1, hparams.quantize_channels)
+    else:
+        initial_input = torch.zeros(1, 1, 1).fill_(initial_value)
     initial_input = initial_input.to(device)
 
     # Run the model in fast eval mode
@@ -472,8 +533,26 @@ def eval_model(global_step, writer, device, model, y, c, g, input_lengths, eval_
             initial_input, c=c, g=g, T=length, softmax=True, quantize=True, tqdm=tqdm,
             log_scale_min=hparams.log_scale_min)
 
-    y_hat = y_hat.view(-1).cpu().data.numpy()
+    if is_mulaw_quantize(hparams.input_type):
+        y_hat = y_hat.max(1)[1].view(-1).long().cpu().data.numpy()
+        y_hat = P.inv_mulaw_quantize(y_hat, hparams.quantize_channels)
+        y_target = P.inv_mulaw_quantize(y_target, hparams.quantize_channels)
+    elif is_mulaw(hparams.input_type):
+        y_hat = P.inv_mulaw(y_hat.view(-1).cpu().data.numpy(), hparams.quantize_channels)
+        y_target = P.inv_mulaw(y_target, hparams.quantize_channels)
+    else:
+        y_hat = y_hat.view(-1).cpu().data.numpy()
 
+    # Save audio
+    os.makedirs(eval_dir, exist_ok=True)
+    path = join(eval_dir, "step{:09d}_predicted.wav".format(global_step))
+    librosa.output.write_wav(path, y_hat, sr=hparams.sample_rate)
+    path = join(eval_dir, "step{:09d}_target.wav".format(global_step))
+    librosa.output.write_wav(path, y_target, sr=hparams.sample_rate)
+
+    # save figure
+    path = join(eval_dir, "step{:09d}_waveplots.png".format(global_step))
+    save_waveplot(path, y_hat, y_target)
 
 
 def save_states(global_step, writer, y_hat, y, input_lengths, checkpoint_dir=None):
@@ -485,18 +564,39 @@ def save_states(global_step, writer, y_hat, y, input_lengths, checkpoint_dir=Non
     if y_hat.dim() == 4:
         y_hat = y_hat.squeeze(-1)
 
-    # (B, T)
-    #y_hat = sample_from_discretized_mix_logistic(
-    #y_hat, log_scale_min=hparams.log_scale_min)
-    # (T,)
-    y_hat = y_hat[idx].view(-1).data.cpu().numpy()
-    y = y[idx].view(-1).data.cpu().numpy()
-  
+    if is_mulaw_quantize(hparams.input_type):
+        # (B, T)
+        y_hat = F.softmax(y_hat, dim=1).max(1)[1]
+
+        # (T,)
+        y_hat = y_hat[idx].data.cpu().long().numpy()
+        y = y[idx].view(-1).data.cpu().long().numpy()
+
+        y_hat = P.inv_mulaw_quantize(y_hat, hparams.quantize_channels)
+        y = P.inv_mulaw_quantize(y, hparams.quantize_channels)
+    else:
+        # (B, T)
+        y_hat = sample_from_discretized_mix_logistic(
+            y_hat, log_scale_min=hparams.log_scale_min)
+        # (T,)
+        y_hat = y_hat[idx].view(-1).data.cpu().numpy()
+        y = y[idx].view(-1).data.cpu().numpy()
+
+        if is_mulaw(hparams.input_type):
+            y_hat = P.inv_mulaw(y_hat, hparams.quantize_channels)
+            y = P.inv_mulaw(y, hparams.quantize_channels)
+
     # Mask by length
     y_hat[length:] = 0
     y[length:] = 0
 
-
+    # Save audio
+    audio_dir = join(checkpoint_dir, "audio")
+    os.makedirs(audio_dir, exist_ok=True)
+    path = join(audio_dir, "step{:09d}_predicted.wav".format(global_step))
+    librosa.output.write_wav(path, y_hat, sr=hparams.sample_rate)
+    path = join(audio_dir, "step{:09d}_target.wav".format(global_step))
+    librosa.output.write_wav(path, y, sr=hparams.sample_rate)
 
 
 def __train_step(device, phase, epoch, global_step, global_test_step,
@@ -526,12 +626,6 @@ def __train_step(device, phase, epoch, global_step, global_test_step,
             hparams.initial_learning_rate, step, **hparams.lr_schedule_kwargs)
         for param_group in optimizer.param_groups:
             param_group['lr'] = current_lr
-            current_eps = param_group['eps']
-            #current_params = param_group['params'] 
-            current_optimizerbeta0 = param_group['betas'][0]
-            current_optimizerbeta1 = param_group['betas'][1]
-            current_amsgrad = param_group['amsgrad']
-            current_weightdecay = param_group['weight_decay'] 
     optimizer.zero_grad()
 
     # Prepare data
@@ -553,21 +647,15 @@ def __train_step(device, phase, epoch, global_step, global_test_step,
         # you must make sure that batch size % num gpu == 0
         y_hat = torch.nn.parallel.data_parallel(model, (x, c, g, False))
     else:
-        #print('x',x.shape)
-        #print('c',c.shape)
         y_hat = model(x, c, g, False)
 
-    #print('yhat:',y_hat.shape)
-    #print('y:',y.shape)
-    #print('y_hat[:, :, 0]:', y_hat[:, :, 0].size())
-    #print('y[:, :, 0, 0]:', y[:, :, 0, 0].size())
-    
-    #loss = torch.zeros(y_hat.size()[2])
-    loss = 0 
-    for i in range (y_hat.size()[2]):
-        loss += criterion(y_hat[:, :, i], y[ :, :, i, 0])
-    loss = loss/(y_hat.size()[2])
-    #print('loss:', loss)
+    if is_mulaw_quantize(hparams.input_type):
+        # wee need 4d inputs for spatial cross entropy loss
+        # (B, C, T, 1)
+        y_hat = y_hat.unsqueeze(-1)
+        loss = criterion(y_hat[:, :, :-1, :], y[:, 1:, :], mask=mask)
+    else:
+        loss = criterion(y_hat[:, :, :-1], y[:, 1:, :], mask=mask)
 
     if train and step > 0 and step % hparams.checkpoint_interval == 0:
         save_states(step, writer, y_hat, y, input_lengths, checkpoint_dir)
@@ -588,12 +676,6 @@ def __train_step(device, phase, epoch, global_step, global_test_step,
             for name, param in model.named_parameters():
                 if name in ema.shadow:
                     ema.update(name, param.data)
-        if step%extendedlog_period == 0:
-            for name, param in model.named_parameters():
-                #print ('modelparameters:', name, param.data.shape)
-                writer.add_histogram("{}".format(name), param, step)
-            #for param_group in optimizer.param_groups:
-                #print ('optimizerparameters:', param_group['amsgrad'])
 
     # Logs
     writer.add_scalar("{} loss".format(phase), float(loss.item()), step)
@@ -601,19 +683,15 @@ def __train_step(device, phase, epoch, global_step, global_test_step,
         if clip_thresh > 0:
             writer.add_scalar("gradient norm", grad_norm, step)
         writer.add_scalar("learning rate", current_lr, step)
-        if step%extendedlog_period == 0:
-            writer.add_scalar("eps", current_eps, step)
-            #writer.add_graph("params", current_params, step)
-            #writer.add_graph("amsgrad", current_amsgrad, step)
-            writer.add_scalar("optimizerbeta_firstargument", current_optimizerbeta0, step)
-            writer.add_scalar("optimizerbeta_secondargument", current_optimizerbeta1, step)
-            writer.add_scalar("weight_decay", current_weightdecay, step)
 
     return loss.item()
 
 
 def train_loop(device, model, data_loaders, optimizer, writer, checkpoint_dir=None):
-    criterion = torch.nn.MSELoss()
+    if is_mulaw_quantize(hparams.input_type):
+        criterion = MaskedCrossEntropyLoss()
+    else:
+        criterion = DiscretizedMixturelogisticLoss()
 
     if hparams.exponential_moving_average:
         ema = ExponentialMovingAverage(hparams.ema_decay)
@@ -698,6 +776,14 @@ def save_checkpoint(device, model, optimizer, step, checkpoint_dir, epoch, ema=N
 
 
 def build_model():
+    if is_mulaw_quantize(hparams.input_type):
+        if hparams.out_channels != hparams.quantize_channels:
+            raise RuntimeError(
+                "out_channels must equal to quantize_chennels if input_type is 'mulaw-quantize'")
+    if hparams.upsample_conditional_features and hparams.cin_channels < 0:
+        s = "Upsample conv layers were specified while local conditioning disabled. "
+        s += "Notice that upsample conv layers will never be used."
+        warn(s)
 
     model = getattr(builder, hparams.builder)(
         out_channels=hparams.out_channels,
@@ -712,6 +798,10 @@ def build_model():
         n_speakers=hparams.n_speakers,
         dropout=hparams.dropout,
         kernel_size=hparams.kernel_size,
+        upsample_conditional_features=hparams.upsample_conditional_features,
+        upsample_scales=hparams.upsample_scales,
+        freq_axis_kernel_size=hparams.freq_axis_kernel_size,
+        scalar_input=is_scalar_input(hparams.input_type),
         legacy=hparams.legacy,
     )
     return model
@@ -774,7 +864,7 @@ def get_data_loaders(data_root, speaker_id, test_shuffle=True):
     local_conditioning = hparams.cin_channels > 0
     for phase in ["train", "test"]:
         train = phase == "train"
-        X = FileSourceDataset(GlottalExcitationDataSource(data_root, speaker_id=speaker_id,
+        X = FileSourceDataset(RawAudioDataSource(data_root, speaker_id=speaker_id,
                                                  train=train,
                                                  test_size=hparams.test_size,
                                                  test_num_samples=hparams.test_num_samples,
@@ -809,14 +899,15 @@ def get_data_loaders(data_root, speaker_id, test_shuffle=True):
             collate_fn=collate_fn, pin_memory=hparams.pin_memory)
 
         speaker_ids = {}
-        for idx, (x, c, g) in enumerate(dataset):
-            if g is not None:
-                try:
-                    speaker_ids[g] += 1
-                except KeyError:
-                    speaker_ids[g] = 1
-        if len(speaker_ids) > 0:
-            print("Speaker stats:", speaker_ids)
+        if X.file_data_source.multi_speaker:
+            for idx, (x, c, g) in enumerate(dataset):
+                if g is not None:
+                    try:
+                        speaker_ids[g] += 1
+                    except KeyError:
+                        speaker_ids[g] = 1
+            if len(speaker_ids) > 0:
+                print("Speaker stats:", speaker_ids)
 
         data_loaders[phase] = data_loader
 
@@ -870,8 +961,6 @@ if __name__ == "__main__":
         hparams.adam_beta1, hparams.adam_beta2),
         eps=hparams.adam_eps, weight_decay=hparams.weight_decay,
         amsgrad=hparams.amsgrad)
-
-    extendedlog_period = 1000
 
     if checkpoint_restore_parts is not None:
         restore_parts(checkpoint_restore_parts, model)

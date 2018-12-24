@@ -16,7 +16,6 @@ from .mixture import sample_from_discretized_mix_logistic
 def module_structure(m):
     print(m)
     
-
 def _expand_global_features(B, T, g, bct=True):
     """Expand global conditioning features to all time steps
 
@@ -121,10 +120,11 @@ class WaveNet(nn.Module):
         self.legacy = legacy
         assert layers % stacks == 0
         layers_per_stack = layers // stacks
-        
-        self.first_conv = Conv1d1x1(out_channels, residual_channels)
-        print('----Network Topology----')
-        print(self.first_conv)
+        if scalar_input:
+            self.first_conv = Conv1d1x1(1, residual_channels)
+        else:
+            self.first_conv = Conv1d1x1(out_channels, residual_channels)
+
         self.conv_layers = nn.ModuleList()
         for layer in range(layers):
             dilation = 2**(layer % layers_per_stack)
@@ -138,7 +138,6 @@ class WaveNet(nn.Module):
                 gin_channels=gin_channels,
                 weight_normalization=weight_normalization)
             self.conv_layers.append(conv)
-        self.conv_layers.apply(module_structure)
         self.last_conv_layers = nn.ModuleList([
             nn.ReLU(inplace=True),
             Conv1d1x1(skip_out_channels, skip_out_channels,
@@ -147,9 +146,7 @@ class WaveNet(nn.Module):
             Conv1d1x1(skip_out_channels, out_channels,
                       weight_normalization=weight_normalization),
         ])
-        self.last_conv_layers.apply(module_structure)
-        
-	
+
         if gin_channels > 0 and use_speaker_embedding:
             assert n_speakers is not None
             self.embed_speakers = Embedding(
@@ -170,7 +167,6 @@ class WaveNet(nn.Module):
                 # assuming we use [0, 1] scaled features
                 # this should avoid non-negative upsampling output
                 self.upsample_conv.append(nn.ReLU(inplace=True))
-                self.upsample_conv.append.apply(module_structure)
         else:
             self.upsample_conv = None
 

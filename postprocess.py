@@ -27,12 +27,15 @@ def postprocess(g=None, vt=None):
     length = g.shape[0]
     b = np.array([1, -0.99])
     w = np.zeros(1) 
-    for j in range (length-4):
-        gj = g[j+2]
+    for j in range (length):
+        gj = g[j]
         vtj = vt[j]
-        vtinvj = dsp.deconvolve([1,0,0,0,0,0,0,0], vtj)[0] 
-        dgj = dsp.lfilter(b, 1, gj)
-        z = dsp.lfilter(vtinvj, 1, dgj)
+        if vtj[0] != 0:
+            vtinvj = dsp.deconvolve([1,0,0,0,0,0,0,0], vtj)[0] 
+            dgj = dsp.lfilter(b, 1, gj)
+            z = dsp.lfilter(vtinvj, 1, dgj)
+        else:
+            z = np.zeros(256)
         w = np.append(w, z)
     return w 	
 
@@ -58,7 +61,7 @@ if __name__ == "__main__":
     if vocaltract_path is not None and glot_path is not None :
         g = np.load(glot_path)
         vt = np.load(vocaltract_path)
-        print('g.shape:',g.shape)
+        print('g.shape, v.shape:',g.shape, vt.shape)
         if g.shape[1] != 254:
             np.swapaxes(g, 0, 1)
         if vt.shape[1] != 5:
