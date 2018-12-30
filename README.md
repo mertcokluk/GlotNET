@@ -10,6 +10,7 @@ The repo is quite immature, there may be defects, bugs and so on. I sincerely ap
 - Mixture of logistic distributions loss / sampling
 - Various audio samples 
 - Fast inference by caching intermediate states in convolutions. Similar to [arXiv:1611.09482](https://arxiv.org/abs/1611.09482)
+![Alt text](gnvswn.png?raw=true "GlotNet and WaveNet")
 
 <!--
 ## Pre-trained models
