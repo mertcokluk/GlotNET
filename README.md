@@ -11,7 +11,8 @@ The repo is quite immature, there may be defects, bugs and so on. I sincerely ap
 - Various audio samples 
 - Fast inference by caching intermediate states in convolutions. Similar to [arXiv:1611.09482](https://arxiv.org/abs/1611.09482)
 
-![Alt text](gnvswn.png?raw=true "GlotNet and WaveNet")!
+![Alt text](gnvswn.png?raw=true "GlotNet and WaveNet")
+
 **Figure 1:** WaveNet vocoder (left) uses acoustic features (AC) and past signal samples to generate the next speech sample. In contrast, GlotNet (right) operates on the more simplistic glottal excitation signal, which is filtered by a vocal tract (VT) filter already parametrized in the acoustic features.
 
 <!--
